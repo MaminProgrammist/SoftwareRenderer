@@ -39,3 +39,9 @@
 
 # debug information files
 *.dwo
+.idea/editor.xml
+.idea/material_theme_project_new.xml
+.idea/misc.xml
+.idea/modules.xml
+.idea/SoftwareRenderer.iml
+.idea/vcs.xml
