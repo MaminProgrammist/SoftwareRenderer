@@ -6,7 +6,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(SDL3_DIR "${CMAKE_SOURCE_DIR}/external/SDL3/lib/cmake/SDL3")
 find_package(SDL3 REQUIRED CONFIG)
 
-add_executable(SoftwareRenderer src/main.cpp)
+add_executable(SoftwareRenderer src/main.cpp
+        src/math.h)
 
 target_link_libraries(SoftwareRenderer PRIVATE SDL3::SDL3)
 
