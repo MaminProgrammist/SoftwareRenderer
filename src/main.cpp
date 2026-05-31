@@ -5,6 +5,13 @@
 #include "math.h"
 #include <limits>
 
+const uint32_t COLOR_WHITE = 0xFFFFFFFF;
+const uint32_t COLOR_BLACK = 0x000000FF;
+const uint32_t COLOR_RED = 0xFF0000FF;
+const uint32_t COLOR_GREEN = 0x00FF00FF;
+const uint32_t COLOR_BLUE = 0x0000FFFF;
+
+const bool DEPTH_SHADE = false;
 const int WIDTH = 800;
 const int HEIGHT = 800;
 const float FOV = 60;
@@ -52,7 +59,7 @@ struct Cube {
     }
 };
 
-Vec4 project(const Vec4 &p, float d) {
+Vec4 project(const Vec4 &p, float d = D) {
     Vec4 result;
 
     result.x = (p.x * d) / p.z;
@@ -88,36 +95,54 @@ uint32_t apply_brightness(uint32_t color, float brightness) {
     return r | g | b | 0xFF;
 }
 
-void set_pixel(std::vector<uint32_t> &framebuffer, int x, int y, uint32_t color) {
+void set_pixel(std::vector<uint32_t> &framebuffer, std::vector<float> &zbuffer, int x, int y, float depth, uint32_t color) {
     if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT)
         return;
 
-    framebuffer[y * WIDTH + x] = color;
+    if (depth < zbuffer[y * WIDTH + x]) {
+        zbuffer[y * WIDTH + x] = depth;
+        framebuffer[y * WIDTH + x] = color;
+    }
 }
 
-void draw_line(std::vector<uint32_t> &framebuffer, int x0, int y0, int x1, int y1, uint32_t color) {
-    int dx = abs(x1 - x0);
-    int dy = abs(y1 - y0);
-    int sx = (x0 < x1) ? 1 : -1; // направление по X
-    int sy = (y0 < y1) ? 1 : -1; // направление по Y
+// draw dot in screen coords
+void draw_dot_screen(std::vector<uint32_t> &framebuffer, std::vector<float> &zbuffer, const Vec4 p, int size, uint32_t color) {
+    int xMin = p.x - size;
+    int yMin = p.y - size;
+    int xMax = p.x + size;
+    int yMax = p.y + size;
+
+    for (int i = xMin; i < xMax; i++) {
+        for (int j = yMin; j < yMax; j++) {
+            set_pixel(framebuffer, zbuffer, i, j, p.z, color);
+        }
+    }
+}
+
+// draw line in screen coords
+void draw_line_screen(std::vector<uint32_t> &framebuffer, std::vector<float> &zbuffer, Vec4 p0, Vec4 p1, uint32_t color) {
+    int dx = abs(p1.x - p0.x);
+    int dy = abs(p1.y - p0.y);
+    int sx = (p0.x < p1.x) ? 1 : -1; // направление по X
+    int sy = (p0.y < p1.y) ? 1 : -1; // направление по Y
     int err = dx - dy;
 
     while (true) {
-        set_pixel(framebuffer, x0, y0, color);
+        set_pixel(framebuffer, zbuffer, p0.x, p0.y, p0.z, color);
 
-        if (x0 == x1 && y0 == y1)
+        if (p0.x == p1.x && p0.y == p1.y)
             break;
 
         int e2 = 2 * err;
 
         if (e2 > -dy) {
             err -= dy;
-            x0 += sx;
+            p0.x += sx;
         }
 
         if (e2 < dx) {
             err += dx;
-            y0 += sy;
+            p0.y += sy;
         }
     }
 }
@@ -139,8 +164,8 @@ void fill_triangle(std::vector<uint32_t> &framebuffer, int x0, int y0, int x1, i
             int s1 = check_side(x, y, x1, y1, x2, y2);
             int s2 = check_side(x, y, x2, y2, x0, y0);
 
-            if ((s0 == s1 && s1 == s2))
-                set_pixel(framebuffer, x, y, color);
+            //if ((s0 == s1 && s1 == s2))
+                //set_pixel(framebuffer, x, y, color);
         }
     }
 }
@@ -149,14 +174,14 @@ void draw_triangle(std::vector<uint32_t> &framebuffer, const Vec4 &p0, const Vec
     fill_triangle(framebuffer, p0.x, p0.y, p1.x, p1.y, p2.x, p2.y, color);
 }
 
-void draw_wired_triangle(
-    std::vector<uint32_t> &framebuffer,
-    const Vec4 &p0, const Vec4 &p1, const Vec4 &p2,
-    uint32_t color) {
-    draw_line(framebuffer, p0.x, p0.y, p1.x, p1.y, color);
-    draw_line(framebuffer, p1.x, p1.y, p2.x, p2.y, color);
-    draw_line(framebuffer, p2.x, p2.y, p0.x, p0.y, color);
-}
+// void draw_wired_triangle(
+//     std::vector<uint32_t> &framebuffer,
+//     const Vec4 &p0, const Vec4 &p1, const Vec4 &p2,
+//     uint32_t color) {
+//     draw_line(framebuffer, p0.x, p0.y, p1.x, p1.y, color);
+//     draw_line(framebuffer, p1.x, p1.y, p2.x, p2.y, color);
+//     draw_line(framebuffer, p2.x, p2.y, p0.x, p0.y, color);
+// }
 
 void draw_wired_cube(std::vector<uint32_t> &framebuffer, const Cube &cube, uint32_t color, bool depthShade = false) {
     float z_min = std::numeric_limits<float>::max();
@@ -183,24 +208,11 @@ void draw_wired_cube(std::vector<uint32_t> &framebuffer, const Cube &cube, uint3
             //filtered_color = 0x0000FFFF;
         }
 
-        draw_wired_triangle(framebuffer, indexes[0], indexes[1], indexes[2], filtered_color);
+        //draw_wired_triangle(framebuffer, indexes[0], indexes[1], indexes[2], filtered_color);
     }
 }
 
-void draw_dot(std::vector<uint32_t> &framebuffer, Vec4 p, int size, uint32_t color, bool depthShade = false) {
-    int xMin = p.x - size;
-    int yMin = p.y - size;
-    int xMax = p.x + size;
-    int yMax = p.y + size;
-
-    for (int i = xMin; i < xMax; i++) {
-        for (int j = yMin; j < yMax; j++) {
-            set_pixel(framebuffer, i, j, color);
-        }
-    }
-}
-
-void draw_dot_cube(std::vector<uint32_t> &framebuffer, const Cube &cube, uint32_t color, bool depthShade = false) {
+void draw_dot_cube(std::vector<uint32_t> &framebuffer, std::vector<float> &zbuffer, const Cube &cube, uint32_t color, bool depthShade = false) {
     uint32_t colors[8] = {
         0x0000FFFF, //
         0x0000FFFF, //
@@ -214,7 +226,7 @@ void draw_dot_cube(std::vector<uint32_t> &framebuffer, const Cube &cube, uint32_
 
     for (int i = 0; i < 8; i++) {
         Vec4 p = project(cube.vertices[i], D);
-        draw_dot(framebuffer, p, 2, colors[i]);
+        draw_dot_screen(framebuffer,zbuffer, p, 2, colors[i]);
     }
 }
 
@@ -234,6 +246,7 @@ int main(int argc, char *argv[]) {
 
     // Наш framebuffer - просто массив пикселей
     std::vector<uint32_t> framebuffer(WIDTH * HEIGHT);
+    std::vector<float> zbuffer(WIDTH * HEIGHT);
 
     Cube cube(1, Vec4(0, 0, 5));
     uint32_t color = 0xFFFFFFFF;
@@ -256,12 +269,18 @@ int main(int argc, char *argv[]) {
                 running = false;
         }
 
-        for (int i = 0; i < WIDTH * HEIGHT; i++)
-            framebuffer[i] = 0x000000FF;
+        for (int i = 0; i < WIDTH * HEIGHT; i++) {
+            framebuffer[i] = COLOR_BLACK;
+            zbuffer[i] = std::numeric_limits<float>::infinity();
+        }
+
 
         //draw_wired_cube(framebuffer, cube, color, true);
-        //draw_dot(framebuffer, Vec4(WIDTH / 2, HEIGHT / 2, 1, 1), 10, color);
-        draw_dot_cube(framebuffer, cube, color);
+        draw_dot_screen(framebuffer,zbuffer, Vec4(WIDTH / 2, HEIGHT / 2, 20, 1), 10, COLOR_RED);
+        draw_dot_screen(framebuffer,zbuffer, Vec4(WIDTH / 2 + 5, HEIGHT / 2, 15, 1), 10, COLOR_GREEN);
+        draw_dot_screen(framebuffer,zbuffer, Vec4(WIDTH / 2 - 5, HEIGHT / 2, 11, 1), 10, COLOR_BLUE);
+        //draw_dot_cube(framebuffer, cube, color);
+
 
         SDL_UpdateTexture(texture, nullptr, framebuffer.data(), WIDTH * sizeof(uint32_t));
         SDL_RenderTexture(renderer, texture, nullptr, nullptr);
